@@ -18,6 +18,7 @@ services:
       IS_GENERAL: 'true'
       DISABLE_REGISTRATION: 'false'
       NOT_SECURED: '${NOT_SECURED:-true}'
+      DISABLE_SSRF_PROTECTION: '${DISABLE_SSRF_PROTECTION:-true}'
 
       # === Storage Settings
       STORAGE_PROVIDER: 'local'
