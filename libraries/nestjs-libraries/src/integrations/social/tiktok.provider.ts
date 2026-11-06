@@ -68,6 +68,16 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
       (firstItems?.[0]?.path?.indexOf?.('mp4') ?? -1) > -1
     ) {
       return 'You need one media';
+    } else if (
+      firstItems?.length === 1 &&
+      (firstItems?.[0]?.path?.indexOf?.('mp4') ?? -1) === -1
+    ) {
+      return 'TikTok photo posts require at least 2 images (carousel)';
+    } else if (
+      (firstItems?.length ?? 0) > 35 &&
+      firstItems?.every((p) => (p?.path?.indexOf?.('mp4') ?? -1) === -1)
+    ) {
+      return 'TikTok photo posts support up to 35 images';
     }
 
     // TikTok fails the whole photo post when a single image is oversized, and

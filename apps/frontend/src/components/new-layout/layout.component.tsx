@@ -23,6 +23,7 @@ import { ShowLinkedinCompany } from '@gitroom/frontend/components/launches/helpe
 import { MediaSettingsLayout } from '@gitroom/frontend/components/launches/helpers/media.settings.component';
 import { Toaster } from '@gitroom/react/toaster/toaster';
 import { ShowPostSelector } from '@gitroom/frontend/components/post-url-selector/post.url.selector';
+import { PublishProgressModal } from '@gitroom/frontend/components/new-launch/publish.progress.modal';
 import { NewSubscription } from '@gitroom/frontend/components/layout/new.subscription';
 import { Support } from '@gitroom/frontend/components/layout/support';
 import { ContinueProvider } from '@gitroom/frontend/components/layout/continue.provider';
@@ -96,6 +97,7 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
             <ShowLinkedinCompany />
             <MediaSettingsLayout />
             <ShowPostSelector />
+            <PublishProgressModal />
             <PreConditionComponent />
             <NewSubscription />
             <ContinueProvider />

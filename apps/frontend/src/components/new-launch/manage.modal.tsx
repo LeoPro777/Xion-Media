@@ -38,6 +38,10 @@ import { capitalize } from 'lodash';
 import { SelectCustomer } from '@gitroom/frontend/components/launches/select.customer';
 import { CopilotPopup } from '@copilotkit/react-ui';
 import { DummyCodeComponent } from '@gitroom/frontend/components/new-launch/dummy.code.component';
+import {
+  ChannelProgressItem,
+  usePublishProgressStore,
+} from '@gitroom/frontend/components/new-launch/publish.progress.store';
 import { CreationMethodBadge } from '@gitroom/frontend/components/launches/creation.method.badge';
 import {
   SettingsIcon,
@@ -746,12 +750,13 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
       }
 
       if (!dummy) {
+        let saved = false;
+        const allCreatedPosts: Array<{ postId: string; integration: string }> = [];
         if (addEditSets) {
           addEditSets(data);
         } else {
           // every type of save is its own request, the drafts last, since a
           // draft save skips the checks the others still run
-          let saved = false;
           for (const requestType of ['update', 'schedule', 'now', 'draft']) {
             const request = {
               type: requestType,
@@ -785,8 +790,191 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               setLoading(false);
               return;
             }
+
+            const createdData = await response.json().catch(() => []);
+            if (Array.isArray(createdData)) {
+              allCreatedPosts.push(...createdData);
+            }
             saved = true;
           }
+        }
+
+        if (saved && !addEditSets && selectedIntegrations.length > 0) {
+          let realGroup = group;
+          if (allCreatedPosts.length > 0) {
+            try {
+              const postDetailRes = await fetch(`/posts/${allCreatedPosts[0].postId}`);
+              if (postDetailRes.ok) {
+                const postDetail = await postDetailRes.json();
+                if (postDetail?.group) {
+                  realGroup = postDetail.group;
+                }
+              }
+            } catch (e) {
+              // fallback to client group
+            }
+          }
+          const platformMeta: Record<
+            string,
+            {
+              name: string;
+              badgeLetter: string;
+              avatarBg: string;
+              networkColor: string;
+              defaultTarget: string;
+            }
+          > = {
+            youtube: {
+              name: 'YouTube',
+              badgeLetter: 'Y',
+              avatarBg: 'bg-red-600 text-white',
+              networkColor: '#EF4444',
+              defaultTarget: 'Shorts',
+            },
+            tiktok: {
+              name: 'TikTok',
+              badgeLetter: 'T',
+              avatarBg: 'bg-black text-white',
+              networkColor: '#10B981',
+              defaultTarget: 'Video vertical',
+            },
+            instagram: {
+              name: 'Instagram',
+              badgeLetter: 'I',
+              avatarBg: 'bg-gradient-to-tr from-yellow-500 to-pink-500 text-white',
+              networkColor: '#EC4899',
+              defaultTarget: 'Reel',
+            },
+            facebook: {
+              name: 'Facebook',
+              badgeLetter: 'F',
+              avatarBg: 'bg-blue-600 text-white',
+              networkColor: '#3B82F6',
+              defaultTarget: 'Página',
+            },
+            x: {
+              name: 'X (Twitter)',
+              badgeLetter: 'X',
+              avatarBg: 'bg-zinc-900 text-white',
+              networkColor: '#A855F7',
+              defaultTarget: 'Post / Hilo',
+            },
+            threads: {
+              name: 'Threads',
+              badgeLetter: '@',
+              avatarBg: 'bg-zinc-800 text-white',
+              networkColor: '#E4E4E7',
+              defaultTarget: 'Thread',
+            },
+            telegram: {
+              name: 'Telegram',
+              badgeLetter: 'T',
+              avatarBg: 'bg-sky-500 text-white',
+              networkColor: '#0EA5E9',
+              defaultTarget: 'Canal',
+            },
+            linkedin: {
+              name: 'LinkedIn',
+              badgeLetter: 'in',
+              avatarBg: 'bg-blue-700 text-white',
+              networkColor: '#2563EB',
+              defaultTarget: 'Feed',
+            },
+            pinterest: {
+              name: 'Pinterest',
+              badgeLetter: 'P',
+              avatarBg: 'bg-red-700 text-white',
+              networkColor: '#DC2626',
+              defaultTarget: 'Pin',
+            },
+            reddit: {
+              name: 'Reddit',
+              badgeLetter: 'R',
+              avatarBg: 'bg-orange-600 text-white',
+              networkColor: '#EA580C',
+              defaultTarget: 'Subreddit',
+            },
+          };
+
+          const firstPostValue = allValues?.[0]?.values?.[0];
+          const rawSnippet = firstPostValue?.content || '';
+          const contentSnippet = rawSnippet.replace(/<[^>]*>/g, '');
+          const firstMedia =
+            firstPostValue?.image?.[0] || firstPostValue?.media?.[0];
+          const thumbnail = firstMedia?.thumbnail || firstMedia?.path;
+          const mediaType =
+            firstMedia?.path?.endsWith('.mp4') ||
+            firstMedia?.path?.endsWith('.mov') ||
+            firstMedia?.thumbnail
+              ? 'video'
+              : 'image';
+          const postTitle =
+            contentSnippet.slice(0, 45) || 'Publicación Multiplataforma';
+
+          const progressChannels: ChannelProgressItem[] = selectedIntegrations.map(
+            (sel) => {
+              const platformKey = (
+                (sel.integration as any).providerIdentifier ||
+                sel.integration.identifier?.split('-')[0] ||
+                ''
+              ).toLowerCase();
+              const meta = platformMeta[platformKey] || {
+                name: sel.integration.name || platformKey || 'Canal',
+                badgeLetter: (sel.integration.name?.[0] || 'C').toUpperCase(),
+                avatarBg: 'bg-purple-600 text-white',
+                networkColor: '#8B5CF6',
+                defaultTarget: 'Publicación',
+              };
+
+              const isDraft =
+                saveTypeOf(sel.integration.id) === 'draft' ||
+                sel.settings?.content_posting_method === 'UPLOAD';
+
+              let targetType = meta.defaultTarget;
+              if (platformKey === 'tiktok') {
+                targetType = isDraft
+                  ? 'Bandeja de entrada (Borrador)'
+                  : 'Publicación directa';
+              } else if (platformKey === 'youtube') {
+                targetType = 'YouTube Shorts';
+              } else if (platformKey === 'instagram') {
+                targetType = 'Reel / Feed';
+              }
+
+              const matchedCreated = allCreatedPosts.find(
+                (p: { postId: string; integration: string }) =>
+                  p.integration === sel.integration.id
+              );
+              const createdPostId = matchedCreated?.postId;
+
+              return {
+                id: sel.integration.id,
+                postId: createdPostId,
+                name: sel.integration.name,
+                network: meta.name,
+                platformKey,
+                badgeLetter: meta.badgeLetter,
+                avatarBg: meta.avatarBg,
+                avatarPicture: sel.integration.picture || undefined,
+                networkColor: meta.networkColor,
+                targetType,
+                isDraft,
+                progress: 15,
+                status: 'uploading' as const,
+                statusMessage: 'Iniciando transmisión...',
+                settings: sel.settings,
+              };
+            }
+          );
+
+          usePublishProgressStore.getState().openProgressModal({
+            group: realGroup,
+            title: postTitle,
+            contentSnippet,
+            thumbnail,
+            mediaType,
+            channels: progressChannels,
+          });
         }
 
         if (!addEditSets) {

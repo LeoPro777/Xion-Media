@@ -60,6 +60,9 @@ export class InstagramProvider
     if (firstPost.length > 10) {
       return 'Instagram carousel only supports up to 10 media attachments';
     }
+    if (firstPost.length > 1 && settings?.post_type === 'story') {
+      return 'Instagram Stories do not support carousels. Please select "Post / Reel"';
+    }
     if (this.assetBoolean(settings?.is_trial_reel)) {
       if ((firstPost?.length ?? 0) > 1) {
         return 'Trial Reels can only have one video';
@@ -71,21 +74,18 @@ export class InstagramProvider
         return 'Trial Reels must be a video';
       }
     }
-    if (firstPost?.some((f) => (f?.alt?.length ?? 0) > 1000)) {
+    if (firstPost?.some((f: any) => (f?.alt?.length ?? 0) > 1000)) {
       return 'Instagram alt text can be up to 1000 characters';
     }
     if (settings?.audio?.id) {
       if (settings?.post_type === 'story') {
         return 'Audio can only be added to Reels, not to Stories';
       }
-      if ((firstPost?.length ?? 0) > 1) {
-        return 'Audio can only be added to a single video Reel';
-      }
       const hasVideo = firstPost?.some(
-        (f) => (f?.path?.indexOf?.('mp4') ?? -1) > -1
+        (f: any) => (f?.path?.indexOf?.('mp4') ?? -1) > -1
       );
-      if (!hasVideo) {
-        return 'Audio can only be added to a video Reel';
+      if ((firstPost?.length ?? 0) > 1 || !hasVideo) {
+        delete settings.audio;
       }
     }
     return true;
@@ -785,92 +785,91 @@ export class InstagramProvider
           )}`
         : ``;
     const isTrialReel = this.assetBoolean(firstPost.settings.is_trial_reel);
-    const medias = await Promise.all(
-      firstPost?.media?.map(async (m) => {
-        const caption =
-          firstPost.media?.length === 1
-            ? `&caption=${encodeURIComponent(firstPost.message)}`
-            : ``;
-        const isCarousel =
-          (firstPost?.media?.length || 0) > 1 && !isStory
-            ? `&is_carousel_item=true`
-            : ``;
-        const mediaType = hasExtension(m.path, 'mp4')
-          ? firstPost?.media?.length === 1
-            ? isStory
-              ? `video_url=${m.path}&media_type=STORIES`
-              : m?.thumbnail
-              ? `video_url=${m.path}&media_type=REELS&cover_url=${encodeURIComponent(
-                  m.thumbnail
-                )}`
-              : `video_url=${m.path}&media_type=REELS&thumb_offset=${
-                  m?.thumbnailTimestamp || 0
-                }`
-            : isStory
+    const medias: string[] = [];
+    for (const m of firstPost?.media || []) {
+      const caption =
+        firstPost.media?.length === 1
+          ? `&caption=${encodeURIComponent(firstPost.message)}`
+          : ``;
+      const isCarousel =
+        (firstPost?.media?.length || 0) > 1 && !isStory
+          ? `&is_carousel_item=true`
+          : ``;
+      const mediaType = hasExtension(m.path, 'mp4')
+        ? firstPost?.media?.length === 1
+          ? isStory
             ? `video_url=${m.path}&media_type=STORIES`
-            : `video_url=${m.path}&media_type=VIDEO&thumb_offset=${
+            : m?.thumbnail
+            ? `video_url=${m.path}&media_type=REELS&cover_url=${encodeURIComponent(
+                m.thumbnail
+              )}`
+            : `video_url=${m.path}&media_type=REELS&thumb_offset=${
                 m?.thumbnailTimestamp || 0
               }`
           : isStory
-          ? `image_url=${m.path}&media_type=STORIES`
-          : `image_url=${m.path}`;
+          ? `video_url=${m.path}&media_type=STORIES`
+          : `video_url=${m.path}&media_type=VIDEO&thumb_offset=${
+              m?.thumbnailTimestamp || 0
+            }`
+        : isStory
+        ? `image_url=${m.path}&media_type=STORIES`
+        : `image_url=${m.path}`;
 
-        // alt_text is only supported on images (single or carousel item),
-        // not on videos or stories
-        const altText =
-          m.alt && !isStory && !hasExtension(m.path, 'mp4')
-            ? `&alt_text=${encodeURIComponent(m.alt)}`
-            : ``;
+      // alt_text is only supported on images (single or carousel item),
+      // not on videos or stories
+      const altText =
+        m.alt && !isStory && !hasExtension(m.path, 'mp4')
+          ? `&alt_text=${encodeURIComponent(m.alt)}`
+          : ``;
 
-        const trialParams = isTrialReel
-          ? `&trial_params=${encodeURIComponent(
+      const trialParams = isTrialReel
+        ? `&trial_params=${encodeURIComponent(
+            JSON.stringify({
+              graduation_strategy:
+                firstPost.settings.graduation_strategy || 'MANUAL',
+            })
+          )}`
+        : ``;
+
+      // collaborators are not allowed on carousel child items,
+      // they go on the carousel container instead
+      const itemCollaborators =
+        firstPost?.media?.length === 1 ? collaborators : ``;
+
+      // audio_configuration is only supported for Reels (single video, not a story)
+      // and only with Facebook Login (not Instagram Login / graph.instagram.com)
+      const audioConfiguration =
+        firstPost?.settings?.audio?.id &&
+        type === 'graph.facebook.com' &&
+        !isStory &&
+        firstPost?.media?.length === 1 &&
+        hasExtension(m.path, 'mp4')
+          ? `&audio_configuration=${encodeURIComponent(
               JSON.stringify({
-                graduation_strategy:
-                  firstPost.settings.graduation_strategy || 'MANUAL',
+                audio_id: firstPost.settings.audio.id,
+                ...(typeof firstPost.settings.audio.audio_volume !==
+                'undefined'
+                  ? { audio_volume: +firstPost.settings.audio.audio_volume }
+                  : {}),
+                ...(typeof firstPost.settings.audio.video_volume !==
+                'undefined'
+                  ? { video_volume: +firstPost.settings.audio.video_volume }
+                  : {}),
               })
             )}`
           : ``;
 
-        // collaborators are not allowed on carousel child items,
-        // they go on the carousel container instead
-        const itemCollaborators =
-          firstPost?.media?.length === 1 ? collaborators : ``;
+      const { id: photoId } = await (
+        await this.fetch(
+          `https://${type}/${META_GRAPH_API_VERSION}/${id}/media?${mediaType}${altText}${isCarousel}${itemCollaborators}${trialParams}${audioConfiguration}&access_token=${accessToken}${caption}`,
+          {
+            method: 'POST',
+          }
+        )
+      ).json();
 
-        // audio_configuration is only supported for Reels (single video, not a story)
-        // and only with Facebook Login (not Instagram Login / graph.instagram.com)
-        const audioConfiguration =
-          firstPost?.settings?.audio?.id &&
-          type === 'graph.facebook.com' &&
-          !isStory &&
-          firstPost?.media?.length === 1 &&
-          hasExtension(m.path, 'mp4')
-            ? `&audio_configuration=${encodeURIComponent(
-                JSON.stringify({
-                  audio_id: firstPost.settings.audio.id,
-                  ...(typeof firstPost.settings.audio.audio_volume !==
-                  'undefined'
-                    ? { audio_volume: +firstPost.settings.audio.audio_volume }
-                    : {}),
-                  ...(typeof firstPost.settings.audio.video_volume !==
-                  'undefined'
-                    ? { video_volume: +firstPost.settings.audio.video_volume }
-                    : {}),
-                })
-              )}`
-            : ``;
-
-        const { id: photoId } = await (
-          await this.fetch(
-            `https://${type}/${META_GRAPH_API_VERSION}/${id}/media?${mediaType}${altText}${isCarousel}${itemCollaborators}${trialParams}${audioConfiguration}&access_token=${accessToken}${caption}`,
-            {
-              method: 'POST',
-            }
-          )
-        ).json();
-
-        return photoId;
-      }) || []
-    );
+      medias.push(photoId);
+    }
 
     // Containers are invisible until media_publish runs: the processing wait
     // and the publish itself move to checkPostStatus / finalizePost so a

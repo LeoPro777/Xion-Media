@@ -4,7 +4,7 @@ import {
   PostComment,
   withProvider,
 } from '@gitroom/frontend/components/new-launch/providers/high.order.provider';
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
 import { Select } from '@gitroom/react/form/select';
 import { Checkbox } from '@gitroom/react/form/checkbox';
 import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
@@ -39,12 +39,23 @@ const InstagramCollaborators: FC<{
   values?: any;
 }> = (props) => {
   const t = useT();
-  const { watch, register, formState, control } = useSettings();
-  const { integration } = useIntegration();
+  const { watch, register, formState, control, setValue } = useSettings();
+  const { integration, value } = useIntegration();
   const postCurrentType = watch('post_type');
   const isTrialReel = watch('is_trial_reel');
   // The Audio API is only available with Facebook Login, not Instagram Login
   const supportsAudio = integration?.identifier === 'instagram';
+
+  const images = value?.[0]?.image ?? [];
+  const hasMedia = images.length > 0;
+  const isSingleVideo =
+    images.length === 1 && (images[0]?.path?.indexOf?.('mp4') ?? -1) > -1;
+
+  useEffect(() => {
+    if (hasMedia && !isSingleVideo && watch('audio')) {
+      setValue('audio', undefined);
+    }
+  }, [hasMedia, isSingleVideo]);
   return (
     <>
       <Select
@@ -70,7 +81,7 @@ const InstagramCollaborators: FC<{
         />
       )}
 
-      {postCurrentType === 'post' && (
+      {postCurrentType === 'post' && (!hasMedia || isSingleVideo) && (
         <div className="mt-[18px]">
           <InstagramAudioSelector
             label={t(
@@ -83,7 +94,7 @@ const InstagramCollaborators: FC<{
         </div>
       )}
 
-      {postCurrentType === 'post' && (
+      {postCurrentType === 'post' && (!hasMedia || isSingleVideo) && (
         <div className="mt-[18px] flex flex-col gap-[18px]">
           <Checkbox
             {...register('is_trial_reel', {
